@@ -38,6 +38,7 @@ with open("sender.txt", newline='') as f:
   smpt_url = sender_list[2]
 
 try:
+    # Set up Firefox options
     opts = FirefoxOptions()
     opts.add_argument("--headless")
     driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()),options=opts)
