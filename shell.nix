@@ -4,5 +4,6 @@
     nativeBuildInputs = with pkgs.buildPackages; [ 
       rustup
       cargo 
+      geckodriver
     ];
 }
