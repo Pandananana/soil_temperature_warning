@@ -3,6 +3,7 @@ use std::thread;
 use std::time::Duration;
 use thirtyfour::prelude::*;
 
+
 fn start_geckodriver() -> Result<Child, std::io::Error> {
     let geckodriver = Command::new("geckodriver")
         .arg("--port")
@@ -20,10 +21,18 @@ async fn start_browser() -> WebDriverResult<WebDriver> {
     Ok(driver)
 }
 
+async fn stop_browser_gecko(webdriver: WebDriver, mut geckodriver: Child) {
+    // Explicitly close the browser
+    webdriver.quit().await.expect("Failed to close browser");
+
+    // Stop geckodriver
+    geckodriver.kill().expect("Failed to kill geckodriver");
+}
+
 #[tokio::main]
 async fn main() -> WebDriverResult<()> {
     // Start browser
-    let mut geckodriver = start_geckodriver().expect("Failed to start geckodriver");
+    let geckodriver = start_geckodriver().expect("Failed to start geckodriver");
     let driver = start_browser().await?;
 
     // Your test code here
@@ -32,11 +41,7 @@ async fn main() -> WebDriverResult<()> {
     // Wait a moment for geckodriver to be ready
     thread::sleep(Duration::from_secs(2));
 
-    // Explicitly close the browser
-    driver.quit().await?;
-
-    // Stop geckodriver
-    geckodriver.kill().expect("Failed to kill geckodriver");
+    stop_browser_gecko(driver, geckodriver).await;
 
     Ok(())
 }
