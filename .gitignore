@@ -1,0 +1,9 @@
+geckodriver.log
+emails.txt
+sender.txt
+temperatur.csv
+.envrc
+
+# Added by cargo
+
+/target
