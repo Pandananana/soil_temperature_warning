@@ -5,5 +5,8 @@
       rustup
       cargo 
       geckodriver
+      pkg-config
+      openssl
+      watchexec
     ];
 }
