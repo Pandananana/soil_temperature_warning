@@ -20,7 +20,8 @@ fn start_geckodriver() -> Result<Child, std::io::Error> {
 }
 
 async fn start_browser() -> WebDriverResult<WebDriver> {
-    let caps = DesiredCapabilities::firefox();
+    let mut caps = DesiredCapabilities::firefox();
+    caps.set_headless()?;
     let driver = WebDriver::new("http://localhost:4444", caps).await?;
     Ok(driver)
 }
@@ -59,12 +60,7 @@ fn send_email(recepient: &str, subject: &str, body: &str) {
     }
 }
 
-#[tokio::main]
-async fn main() -> WebDriverResult<()> {
-    // Start browser
-    let geckodriver = start_geckodriver().expect("Failed to start geckodriver");
-    let driver = start_browser().await.expect("Failed to start browser");
-
+async fn get_soil_temp(driver: &WebDriver) -> Result<String, Box<dyn std::error::Error>>{
     // Your test code here
     driver.goto("https://weathermodels-plant.dlbr.dk/(S(gzy2tilppcazluhtlh4hleft))/default.aspx").await?;
 
@@ -102,7 +98,21 @@ async fn main() -> WebDriverResult<()> {
 
     // Get soil temp data
     let soil_temp = driver.find(By::XPath("//*[@id='GridView1']/tbody/tr[2]/td[7]")).await?.text().await?;
-    println!("{}",soil_temp);
+    
+    Ok(soil_temp)
+}
+
+#[tokio::main]
+async fn main() -> WebDriverResult<()> {
+    // Start browser
+    let geckodriver = start_geckodriver().expect("Failed to start geckodriver");
+    let driver = start_browser().await.expect("Failed to start browser");
+
+    match get_soil_temp(&driver).await {
+        Ok(soil_temp) => println!("{}", soil_temp),
+        Err(error) => println!("Error getting soil temp: {}", error)
+    }
+
 
     stop_browser_gecko(driver, geckodriver).await;
 
