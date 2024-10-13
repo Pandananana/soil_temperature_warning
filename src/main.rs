@@ -2,7 +2,6 @@ use std::process::{Command, Child};
 use std::thread;
 use std::time::Duration;
 use thirtyfour::prelude::*;
-use lettre::message::header::{ContentType, Subject};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use std::env;
@@ -21,7 +20,7 @@ fn start_geckodriver() -> Result<Child, std::io::Error> {
 }
 
 async fn start_browser() -> WebDriverResult<WebDriver> {
-    let caps = DesiredCapabilities::firefox(Chrono);
+    let caps = DesiredCapabilities::firefox();
     let driver = WebDriver::new("http://localhost:4444", caps).await?;
     Ok(driver)
 }
@@ -63,18 +62,49 @@ fn send_email(recepient: &str, subject: &str, body: &str) {
 #[tokio::main]
 async fn main() -> WebDriverResult<()> {
     // Start browser
-    // let geckodriver = start_geckodriver().expect("Failed to start geckodriver");
-    // let driver = start_browser().await.expect("Failed to start browser");
+    let geckodriver = start_geckodriver().expect("Failed to start geckodriver");
+    let driver = start_browser().await.expect("Failed to start browser");
 
-    // // Your test code here
-    // driver.goto("https://weathermodels-plant.dlbr.dk/(S(gzy2tilppcazluhtlh4hleft))/default.aspx").await?;
+    // Your test code here
+    driver.goto("https://weathermodels-plant.dlbr.dk/(S(gzy2tilppcazluhtlh4hleft))/default.aspx").await?;
 
-    let current_date = Local::now();
-    let formatted_date = current_date.format("%d-%m-%Y").to_string();
+    let latitude = env::var("LATITUDE").expect("LATITUDE not set");
+    let longitude = env::var("LONGITUDE").expect("LONGTITUDE not set");
 
-    // thread::sleep(Duration::from_secs(60));
+    // Clear and then insert latitude
+    let input_lat = driver.find(By::Id("txtCoordinateLat")).await?;
+    input_lat.clear().await?;
+    input_lat.send_keys(latitude).await?;
 
-    // stop_browser_gecko(driver, geckodriver).await;
+    // Clear and then insert longitude
+    let input_long = driver.find(By::Id("txtCoordinateLon")).await?;
+    input_long.clear().await?;
+    input_long.send_keys(longitude).await?;
+
+    // Get date
+    let date_formatted = Local::now().format("%d-%m-%Y").to_string();
+
+    // Clear and then insert from date
+    let input_date_from = driver.find(By::Id("datePickFrom_dateInput")).await?;
+    input_date_from.clear().await?;
+    input_date_from.send_keys(&date_formatted).await?;
+
+    // Clear and then insert to date
+    let input_date_to = driver.find(By::Id("datePickTo_dateInput")).await?;
+    input_date_to.clear().await?;
+    input_date_to.send_keys(&date_formatted).await?;
+
+    // Select soil temperature reading
+    driver.find(By::Id("chkParameters_3")).await?.click().await?;
+
+    // Click update
+    driver.find(By::Id("Button1")).await?.click().await?;
+
+    // Get soil temp data
+    let soil_temp = driver.find(By::XPath("//*[@id='GridView1']/tbody/tr[2]/td[7]")).await?.text().await?;
+    println!("{}",soil_temp);
+
+    stop_browser_gecko(driver, geckodriver).await;
 
     Ok(())
 }
