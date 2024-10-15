@@ -23,7 +23,7 @@ async fn get_current_temperature() -> Result<f32> {
     let mut geckodriver = start_geckodriver().context("Failed to start geckodriver")?;
 
     // Use a closure to ensure browser is always closed
-    let result = (|| async {
+    let result = async {
         let driver = start_browser().await.context("Failed to start browser")?;
 
         // Navigate to the weather page
@@ -63,7 +63,7 @@ async fn get_current_temperature() -> Result<f32> {
             .await?;
 
         parse_comma_float(&soil_temp).context("Failed to parse soil temperature")
-    })().await;
+    }.await;
 
     // Ensure geckodriver is stopped
     geckodriver.kill().context("Failed to kill geckodriver")?;
