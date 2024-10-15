@@ -139,11 +139,6 @@ enum WarningLevel {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct PersistentData {
-    current_warning_level: WarningLevel,
-    last_email_sent: Option<DateTime<Utc>>,
-}
-
 struct TemperatureMonitor {
     current_warning_level: WarningLevel,
     last_email_sent: Option<DateTime<Utc>>,
@@ -196,11 +191,7 @@ impl TemperatureMonitor {
 
     fn save_state(&self) -> Result<()> {
         println!("Saving state");
-        let data = PersistentData {
-            current_warning_level: self.current_warning_level.clone(),
-            last_email_sent: self.last_email_sent,
-        };
-        let json = serde_json::to_string(&data).context("Failed to serialize data")?;
+        let json = serde_json::to_string(self).context("Failed to serialize data")?;
         fs::write("data.json", json).context("Failed to write data to file")?;
         Ok(())
     }
@@ -212,13 +203,10 @@ impl TemperatureMonitor {
         }
 
         let json = fs::read_to_string("data.json").context("Failed to read data file")?;
-        let data: PersistentData = serde_json::from_str(&json).context("Failed to deserialize data")?;
+        let monitor: TemperatureMonitor = serde_json::from_str(&json).context("Failed to deserialize data")?;
 
-        println!("Loaded state: {:?}", data);
-        Ok(TemperatureMonitor {
-            current_warning_level: data.current_warning_level,
-            last_email_sent: data.last_email_sent,
-        })
+        println!("Loaded state: {:?}", monitor);
+        Ok(monitor)
     }
 }
 
