@@ -15,6 +15,9 @@ use lettre::{
 };
 use anyhow::{Context, Result};
 
+// Create const for sending email
+const SEND_EMAIL: bool = false;
+
 async fn get_current_temperature() -> Result<f32> {
     // Start geckodriver
     let mut geckodriver = start_geckodriver().context("Failed to start geckodriver")?;
@@ -117,8 +120,12 @@ async fn send_email(recipient: &str, subject: &str, body: &str) -> Result<()> {
         .build();
 
     // Send the email
-    // mailer.send(&email).context("Failed to send email")?;
-    println!("Email sent successfully!");
+    if !SEND_EMAIL {
+        println!("Email ready, but not sent (SEND_EMAIL is false)");
+    } else {
+        mailer.send(&email).context("Failed to send email")?;
+        println!("Email sent successfully!");
+    }
     Ok(())
 }
 
@@ -159,8 +166,12 @@ impl TemperatureMonitor {
         let new_warning_level = self.determine_warning_level(current_temp);
 
         if current_temp >= 5.0 {
-            println!("Temperature is above 5°C, warnings reset");
-            self.send_notification_email(&new_warning_level).await?;
+            if self.current_warning_level != WarningLevel::None {
+                println!("Warnings reset");
+                self.send_notification_email(&new_warning_level).await?;
+            } else {
+                println!("Temperature is still above 5°C");
+            }
             self.current_warning_level = WarningLevel::None;
         } else if new_warning_level > self.current_warning_level {
             self.send_notification_email(&new_warning_level).await?;
