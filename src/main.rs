@@ -160,9 +160,10 @@ impl TemperatureMonitor {
 
         if current_temp >= 5.0 {
             println!("Temperature is above 5°C, warnings reset");
+            self.send_notification_email(&new_warning_level).await?;
             self.current_warning_level = WarningLevel::None;
         } else if new_warning_level > self.current_warning_level {
-            self.send_warning_email(&new_warning_level).await?;
+            self.send_notification_email(&new_warning_level).await?;
             self.current_warning_level = new_warning_level;
         }
         Ok(())
@@ -180,9 +181,9 @@ impl TemperatureMonitor {
         }
     }
 
-    async fn send_warning_email(&mut self, level: &WarningLevel) -> Result<()> {
+    async fn send_notification_email(&mut self, level: &WarningLevel) -> Result<()> {
         // Implement email sending logic here
-        println!("Sending warning email for level: {:?}", level);
+        println!("Sending notification email for warning level: {:?}", level);
         // You would call the send_email function here with appropriate parameters
         // send_email("recipient@example.com", "Temperature Warning", &format!("Warning level: {:?}", level)).await?;
         self.last_email_sent = Some(Utc::now());
