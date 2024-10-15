@@ -267,4 +267,10 @@ mod tests {
         assert!(parse_comma_float("1,23,45").is_err());
         assert!(parse_comma_float("abc").is_err());
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_current_temperature() {
+        let temp = get_current_temperature().await.unwrap();
+        assert!(temp >= -50.0 && temp <= 50.0);
+    }
 }
