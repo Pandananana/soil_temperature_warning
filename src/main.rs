@@ -1,19 +1,15 @@
-use chrono::{DateTime, Utc, Local};
+use anyhow::{Context, Result};
+use chrono::{DateTime, Local, Utc};
+use lettre::{transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use serde::{Deserialize, Serialize};
 use std::{
-    process::{Command, Child},
+    env, fs,
+    path::Path,
+    process::{Child, Command},
     thread,
     time::Duration,
-    env,
-    fs,
-    path::Path,
 };
 use thirtyfour::prelude::*;
-use lettre::{
-    Message, SmtpTransport, Transport,
-    transport::smtp::authentication::Credentials,
-};
-use anyhow::{Context, Result};
 
 // Create const for sending email
 const SEND_EMAIL: bool = false;
@@ -27,7 +23,8 @@ async fn get_current_temperature() -> Result<f32> {
         let driver = start_browser().await.context("Failed to start browser")?;
 
         // Navigate to the weather page
-        driver.goto("https://weathermodels-plant.dlbr.dk/(S(gzy2tilppcazluhtlh4hleft))/default.aspx")
+        driver
+            .goto("https://weathermodels-plant.dlbr.dk/(S(gzy2tilppcazluhtlh4hleft))/default.aspx")
             .await
             .context("Failed to navigate to weather page")?;
 
@@ -53,17 +50,23 @@ async fn get_current_temperature() -> Result<f32> {
         set_input(&driver, "datePickTo_dateInput", &date_formatted).await?;
 
         // Select soil temperature reading and update
-        driver.find(By::Id("chkParameters_3")).await?.click().await?;
+        driver
+            .find(By::Id("chkParameters_3"))
+            .await?
+            .click()
+            .await?;
         driver.find(By::Id("Button1")).await?.click().await?;
 
         // Get soil temperature data
-        let soil_temp = driver.find(By::XPath("//*[@id='GridView1']/tbody/tr[2]/td[7]"))
+        let soil_temp = driver
+            .find(By::XPath("//*[@id='GridView1']/tbody/tr[2]/td[7]"))
             .await?
             .text()
             .await?;
 
         parse_comma_float(&soil_temp).context("Failed to parse soil temperature")
-    }.await;
+    }
+    .await;
 
     // Ensure geckodriver is stopped
     geckodriver.kill().context("Failed to kill geckodriver")?;
@@ -93,9 +96,7 @@ async fn start_browser() -> WebDriverResult<WebDriver> {
 }
 
 fn parse_comma_float(s: &str) -> Result<f32> {
-    s.replace(',', ".")
-        .parse()
-        .context("Failed to parse float")
+    s.replace(',', ".").parse().context("Failed to parse float")
 }
 
 async fn send_email(recipient: &str, subject: &str, body: &str) -> Result<()> {
@@ -132,8 +133,11 @@ async fn send_email(recipient: &str, subject: &str, body: &str) -> Result<()> {
 async fn send_error_email(error: &anyhow::Error) -> Result<()> {
     let admin_email = env::var("ADMIN_EMAIL").context("ADMIN_EMAIL not set")?;
     let subject = "Error in Temperature Monitor".to_string();
-    let body = format!("An error occurred in the Temperature Monitor:\n\n{:#}", error);
-    
+    let body = format!(
+        "An error occurred in the Temperature Monitor:\n\n{:#}",
+        error
+    );
+
     send_email(&admin_email, &subject, &body).await
 }
 
@@ -162,7 +166,9 @@ impl TemperatureMonitor {
 
     async fn daily_check(&mut self) -> Result<()> {
         print!("Daily check: ");
-        let current_temp = get_current_temperature().await.context("Failed to get current temperature")?;
+        let current_temp = get_current_temperature()
+            .await
+            .context("Failed to get current temperature")?;
         let new_warning_level = self.determine_warning_level(current_temp);
 
         if current_temp >= 5.0 {
@@ -215,7 +221,8 @@ impl TemperatureMonitor {
         }
 
         let json = fs::read_to_string("data.json").context("Failed to read data file")?;
-        let monitor: TemperatureMonitor = serde_json::from_str(&json).context("Failed to deserialize data")?;
+        let monitor: TemperatureMonitor =
+            serde_json::from_str(&json).context("Failed to deserialize data")?;
 
         println!("Loaded state: {:?}", monitor);
         Ok(monitor)
@@ -226,10 +233,14 @@ impl TemperatureMonitor {
 async fn main() -> Result<()> {
     let result = async {
         let mut monitor = TemperatureMonitor::load_state().context("Failed to load state")?;
-        monitor.daily_check().await.context("Failed to perform daily check")?;
+        monitor
+            .daily_check()
+            .await
+            .context("Failed to perform daily check")?;
         monitor.save_state().context("Failed to save state")?;
         Ok(())
-    }.await;
+    }
+    .await;
 
     if let Err(err) = &result {
         eprintln!("An error occurred: {:?}", err);
@@ -239,4 +250,21 @@ async fn main() -> Result<()> {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_comma_float() {
+        // Test success cases
+        assert_eq!(parse_comma_float("1,23").unwrap(), 1.23);
+        assert_eq!(parse_comma_float("1.23").unwrap(), 1.23);
+        assert_eq!(parse_comma_float("10").unwrap(), 10.0);
+
+        // Test error case
+        assert!(parse_comma_float("1,23,45").is_err());
+        assert!(parse_comma_float("abc").is_err());
+    }
 }
