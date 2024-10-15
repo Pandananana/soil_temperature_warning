@@ -15,32 +15,6 @@ use lettre::{
 };
 use anyhow::{Context, Result};
 
-fn send_email(recepient: &str, subject: &str, body: &str) {
-    let smtp_username = env::var("SMTP_USERNAME").expect("SMTP_USERNAME not set");
-    let smtp_password = env::var("SMTP_PASSWORD").expect("SMTP_PASSWORD not set");
-    let smtp_server = env::var("SMTP_SERVER").expect("SMTP_SERVER not set");
-    let from_email = env::var("FROM_EMAIL").expect("FROM_EMAIL not set");
-
-    // Create the email
-    let email = Message::builder()
-        .from(from_email.parse().expect("Couldn't parse from_email variable"))
-        .to(recepient.parse().expect("Couldn't parse to_email variable"))
-        .subject(subject)
-        .body(String::from(body)).expect("Couldn't create email body");
-
-    // Create the SMTP transport
-    let creds = Credentials::new(smtp_username, smtp_password);
-    let mailer = SmtpTransport::relay(&smtp_server).expect("Couldn't create mailer")
-        .credentials(creds)
-        .build();
-
-    // Send the email
-    match mailer.send(&email) {
-        Ok(_) => println!("Email sent successfully!"),
-        Err(e) => eprintln!("Could not send email: {e:?}"),
-    }
-}
-
 async fn get_current_temperature() -> Result<f32> {
     // Start geckodriver
     let mut geckodriver = start_geckodriver().context("Failed to start geckodriver")?;
@@ -121,6 +95,41 @@ fn parse_comma_float(s: &str) -> Result<f32> {
         .context("Failed to parse float")
 }
 
+async fn send_email(recipient: &str, subject: &str, body: &str) -> Result<()> {
+    let smtp_username = env::var("SMTP_USERNAME").context("SMTP_USERNAME not set")?;
+    let smtp_password = env::var("SMTP_PASSWORD").context("SMTP_PASSWORD not set")?;
+    let smtp_server = env::var("SMTP_SERVER").context("SMTP_SERVER not set")?;
+    let from_email = env::var("FROM_EMAIL").context("FROM_EMAIL not set")?;
+
+    // Create the email
+    let email = Message::builder()
+        .from(from_email.parse().context("Invalid from_email")?)
+        .to(recipient.parse().context("Invalid recipient email")?)
+        .subject(subject)
+        .body(String::from(body))
+        .context("Failed to create email")?;
+
+    // Create the SMTP transport
+    let creds = Credentials::new(smtp_username, smtp_password);
+    let mailer = SmtpTransport::relay(&smtp_server)
+        .context("Failed to create SMTP transport")?
+        .credentials(creds)
+        .build();
+
+    // Send the email
+    // mailer.send(&email).context("Failed to send email")?;
+    println!("Email sent successfully!");
+    Ok(())
+}
+
+async fn send_error_email(error: &anyhow::Error) -> Result<()> {
+    let admin_email = env::var("ADMIN_EMAIL").context("ADMIN_EMAIL not set")?;
+    let subject = "Error in Temperature Monitor".to_string();
+    let body = format!("An error occurred in the Temperature Monitor:\n\n{:#}", error);
+    
+    send_email(&admin_email, &subject, &body).await
+}
+
 #[derive(Clone, PartialEq, PartialOrd, Debug, Serialize, Deserialize)]
 enum WarningLevel {
     None,
@@ -149,18 +158,19 @@ impl TemperatureMonitor {
         }
     }
 
-    async fn daily_check(&mut self) {
+    async fn daily_check(&mut self) -> Result<()> {
         print!("Daily check: ");
-        let current_temp = get_current_temperature().await.expect("Failed to get current temperature");
+        let current_temp = get_current_temperature().await.context("Failed to get current temperature")?;
         let new_warning_level = self.determine_warning_level(current_temp);
 
         if current_temp >= 5.0 {
             println!("Temperature is above 5°C, warnings reset");
             self.current_warning_level = WarningLevel::None;
         } else if new_warning_level > self.current_warning_level {
-            self.send_warning_email(&new_warning_level);
+            self.send_warning_email(&new_warning_level).await?;
             self.current_warning_level = new_warning_level;
         }
+        Ok(())
     }
 
     fn determine_warning_level(&self, temperature: f32) -> WarningLevel {
@@ -175,31 +185,34 @@ impl TemperatureMonitor {
         }
     }
 
-    fn send_warning_email(&mut self, level: &WarningLevel) {
+    async fn send_warning_email(&mut self, level: &WarningLevel) -> Result<()> {
         // Implement email sending logic here
         println!("Sending warning email for level: {:?}", level);
+        // You would call the send_email function here with appropriate parameters
+        // send_email("recipient@example.com", "Temperature Warning", &format!("Warning level: {:?}", level)).await?;
         self.last_email_sent = Some(Utc::now());
+        Ok(())
     }
 
-    fn save_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn save_state(&self) -> Result<()> {
         println!("Saving state");
         let data = PersistentData {
             current_warning_level: self.current_warning_level.clone(),
             last_email_sent: self.last_email_sent,
         };
-        let json = serde_json::to_string(&data)?;
-        fs::write("data.json", json)?;
+        let json = serde_json::to_string(&data).context("Failed to serialize data")?;
+        fs::write("data.json", json).context("Failed to write data to file")?;
         Ok(())
     }
 
-    fn load_state() -> Result<Self, Box<dyn std::error::Error>> {
+    fn load_state() -> Result<Self> {
         println!("Loading state");
         if !Path::new("data.json").exists() {
             return Ok(TemperatureMonitor::new());
         }
 
-        let json = fs::read_to_string("data.json")?;
-        let data: PersistentData = serde_json::from_str(&json)?;
+        let json = fs::read_to_string("data.json").context("Failed to read data file")?;
+        let data: PersistentData = serde_json::from_str(&json).context("Failed to deserialize data")?;
 
         println!("Loaded state: {:?}", data);
         Ok(TemperatureMonitor {
@@ -210,8 +223,20 @@ impl TemperatureMonitor {
 }
 
 #[tokio::main]
-async fn main() {
-    let mut monitor = TemperatureMonitor::load_state().expect("Failed to load state");
-    monitor.daily_check().await;
-    monitor.save_state().expect("Failed to save state");
+async fn main() -> Result<()> {
+    let result = async {
+        let mut monitor = TemperatureMonitor::load_state().context("Failed to load state")?;
+        monitor.daily_check().await.context("Failed to perform daily check")?;
+        monitor.save_state().context("Failed to save state")?;
+        Ok(())
+    }.await;
+
+    if let Err(err) = &result {
+        eprintln!("An error occurred: {:?}", err);
+        if let Err(email_err) = send_error_email(err).await {
+            eprintln!("Failed to send error email: {:?}", email_err);
+        }
+    }
+
+    result
 }
