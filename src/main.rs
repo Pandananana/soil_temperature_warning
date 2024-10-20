@@ -255,6 +255,8 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn test_parse_comma_float() {
@@ -268,8 +270,47 @@ mod tests {
         assert!(parse_comma_float("abc").is_err());
     }
 
+    #[test]
+    fn test_determine_warning_level() {
+        let monitor = TemperatureMonitor::new();
+
+        assert_eq!(monitor.determine_warning_level(3.0), WarningLevel::None);
+        assert_eq!(monitor.determine_warning_level(2.0), WarningLevel::Low);
+        assert_eq!(monitor.determine_warning_level(1.0), WarningLevel::Medium);
+        assert_eq!(monitor.determine_warning_level(0.0), WarningLevel::High);
+        assert_eq!(monitor.determine_warning_level(-1.0), WarningLevel::High);
+    }
+
+    #[test]
+    fn test_save_and_load_state() {
+        let monitor = TemperatureMonitor {
+            current_warning_level: WarningLevel::Medium,
+            last_email_sent: Some(Utc::now()),
+        };
+
+        // Save state
+        monitor.save_state().unwrap();
+
+        // Load state
+        let loaded_monitor = TemperatureMonitor::load_state().unwrap();
+
+        // Compare the saved and loaded state
+        assert_eq!(
+            monitor.current_warning_level,
+            loaded_monitor.current_warning_level
+        );
+        assert_eq!(
+            monitor.last_email_sent.is_some(),
+            loaded_monitor.last_email_sent.is_some()
+        );
+
+        // Clean up
+        fs::remove_file("data.json").unwrap();
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_get_current_temperature() {
+        // Mock the get_current_temperature function
         let temp = get_current_temperature().await.unwrap();
         assert!(temp >= -50.0 && temp <= 50.0);
     }

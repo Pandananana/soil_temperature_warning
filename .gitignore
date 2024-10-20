@@ -3,8 +3,10 @@ emails.txt
 sender.txt
 temperatur.csv
 .envrc
+.direnv/
 
 # Added by cargo
 
 /target
 data.json
+
